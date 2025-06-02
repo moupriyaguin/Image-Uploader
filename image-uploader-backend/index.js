@@ -1,63 +1,76 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const multer = require('multer');
-const multerS3 = require('multer-s3');
-const aws = require('aws-sdk');
 const cors = require('cors');
+const fileUpload = require('express-fileupload');
 require('dotenv').config();
 
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(fileUpload()); // Middleware to handle file uploads
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected'))
   .catch(err => console.log(err));
 
-// Define a basic schema
+// MongoDB model
 const Image = mongoose.model('Image', new mongoose.Schema({
   key: String,
   url: String,
   uploadedAt: { type: Date, default: Date.now }
 }));
 
-// Configure AWS S3
-const s3 = new aws.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION
+// AWS S3 client config
+const s3 = new S3Client({
+  region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  }
 });
 
-// Set up multer-s3 for image upload
-const upload = multer({
-  storage: multerS3({
-    s3,
-    bucket: process.env.S3_BUCKET_NAME,
-    acl: 'public-read',
-    metadata: (req, file, cb) => {
-      cb(null, { fieldName: file.fieldname });
-    },
-    key: (req, file, cb) => {
-      cb(null, `${Date.now()}_${file.originalname}`);
+// Upload route
+app.post('/upload', async (req, res) => {
+  try {
+    if (!req.files || !req.files.image) {
+      return res.status(400).json({ error: 'No file uploaded' });
     }
-  })
+
+    const file = req.files.image;
+    const fileKey = `${Date.now()}_${file.name}`;
+
+    const uploadParams = {
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: fileKey,
+      Body: file.data,
+      ContentType: file.mimetype,
+      ACL: 'public-read',
+    };
+
+    await s3.send(new PutObjectCommand(uploadParams));
+
+    const imageUrl = `https://${process.env.S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileKey}`;
+
+    const image = new Image({ key: fileKey, url: imageUrl });
+    await image.save();
+
+    res.status(200).json({ message: 'Upload successful', data: image });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Upload failed' });
+  }
 });
 
-// POST route to upload image
-app.post('/upload', upload.single('image'), async (req, res) => {
-  const image = new Image({
-    key: req.file.key,
-    url: req.file.location
-  });
-  await image.save();
-  res.status(200).json({ message: 'Upload successful', data: image });
-});
-
-// GET route to fetch images
+// Get all images
 app.get('/images', async (req, res) => {
-  const images = await Image.find().sort({ uploadedAt: -1 });
-  res.status(200).json(images);
+  try {
+    const images = await Image.find().sort({ uploadedAt: -1 });
+    res.status(200).json(images);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch images' });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
