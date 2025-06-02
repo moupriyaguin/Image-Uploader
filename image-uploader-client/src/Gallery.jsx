@@ -6,7 +6,7 @@ const Gallery = () => {
 
   useEffect(() => {
     axios
-      .get("http://<your-ec2-ip>:5000/images")
+      .get("http://3.108.250.8:5000/images")
       .then((res) => setImages(res.data))
       .catch((err) => console.error(err));
   }, []);

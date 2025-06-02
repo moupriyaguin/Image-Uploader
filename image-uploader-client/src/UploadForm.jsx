@@ -14,7 +14,7 @@ const UploadForm = () => {
 
     try {
       setStatus("Uploading...");
-      const res = await axios.post("http://<your-ec2-ip>:5000/upload", formData);
+      const res = await axios.post("http://3.108.250.8:5000/upload", formData);
       setStatus("Upload Successful ✅");
       setImage(null);
     } catch (err) {
