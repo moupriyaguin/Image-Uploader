@@ -1,10 +1,13 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const fileUpload = require('express-fileupload');
-require('dotenv').config();
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import fileUpload from 'express-fileupload';
+import dotenv from 'dotenv';
 
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+
+dotenv.config();
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -13,14 +16,15 @@ app.use(fileUpload()); // Middleware to handle file uploads
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log(err));
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // MongoDB model
-const Image = mongoose.model('Image', new mongoose.Schema({
+const imageSchema = new mongoose.Schema({
   key: String,
   url: String,
   uploadedAt: { type: Date, default: Date.now }
-}));
+});
+const Image = mongoose.model('Image', imageSchema);
 
 // AWS S3 client config
 const s3 = new S3Client({
@@ -69,6 +73,7 @@ app.get('/images', async (req, res) => {
     const images = await Image.find().sort({ uploadedAt: -1 });
     res.status(200).json(images);
   } catch (err) {
+    console.error('Fetch images error:', err);
     res.status(500).json({ error: 'Failed to fetch images' });
   }
 });
